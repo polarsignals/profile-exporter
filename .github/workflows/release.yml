@@ -68,6 +68,8 @@ jobs:
         --privileged
         --security-opt label=disable
         --security-opt seccomp=unconfined
+      env:
+        TUF_ROOT: /tmp
     permissions:
       id-token: write
       packages: write
@@ -116,6 +118,6 @@ jobs:
 
       - name: Sign container
         env:
-          COSIGN_EXPERIMENTAL: true
+          COSIGN_YES: true
         run: |
           make sign-container
