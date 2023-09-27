@@ -44,7 +44,7 @@ jobs:
     if: ${{ needs.skip-check.outputs.should_skip != 'true' }}
     runs-on: ubuntu-latest
     container:
-      image: docker.io/goreleaser/goreleaser-cross:v1.18.3
+      image: docker.io/goreleaser/goreleaser-cross:v1.21.1
       options: --privileged
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

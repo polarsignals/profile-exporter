@@ -93,7 +93,7 @@ container: $(OUT_DIR)
 
 .PHONY: container-dev
 container-dev:
-	docker build -t $(OUT_DOCKER_DEV):$(VERSION) --build-arg=GOLANG_BASE=golang:1.18.3-bullseye --build-arg=DEBIAN_BASE=debian:bullseye-slim .
+	docker build -t $(OUT_DOCKER_DEV):$(VERSION) --build-arg=GOLANG_BASE=golang:1.21.1-bullseye --build-arg=DEBIAN_BASE=debian:bullseye-slim .
 
 .PHONY: sign-container
 sign-container:
