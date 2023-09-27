@@ -1,0 +1,133 @@
+name: Container
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+env:
+  # renovate: datasource=go depName=github.com/goreleaser/goreleaser
+  GORELEASER_VERSION: v1.10.2
+
+jobs:
+  skip-check:
+    name: Skip check
+    continue-on-error: true
+    runs-on: ubuntu-latest
+    outputs:
+      should_skip: ${{ steps.skip-check.outputs.should_skip }}
+    permissions:
+      actions: write
+      contents: read
+    steps:
+      - id: skip-check
+        uses: fkirc/skip-duplicate-actions@9d116fa7e55f295019cfab7e3ab72b478bcf7fdd # tag=v4.0.0
+        with:
+          do_not_skip: '["schedule", "workflow_dispatch"]'
+          paths: |-
+            [
+              "**.go",
+              ".dockerignore",
+              ".github/workflows/container.yml",
+              "Dockerfile*",
+              "Makefile",
+              "go.mod",
+              "go.sum"
+            ]
+          skip_after_successful_duplicate: false
+
+
+  build-binaries:
+    name: Build binaries using goreleaser
+    needs: skip-check
+    if: ${{ needs.skip-check.outputs.should_skip != 'true' }}
+    runs-on: ubuntu-latest
+    container:
+      image: docker.io/goreleaser/goreleaser-cross:v1.18.3
+      options: --privileged
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        GORELEASER_CURRENT_TAG: "${{ env.goreleaser_current_tag }}"
+    steps:
+      - name: Check out the code
+        uses: actions/checkout@2541b1294d2704b0964813337f33b291d3f8596b # tag=v3.0.2
+
+      - name: Set up Go
+        uses: actions/setup-go@84cbf8094393cdc5fe1fe1671ff2647332956b1a # tag=v3.2.1
+        with:
+          go-version-file: 'go.mod'
+          cache: true
+
+      - name: Run Goreleaser
+        run: goreleaser release --rm-dist --skip-validate --skip-publish --snapshot --debug
+
+      - name: Archive generated artifacts
+        uses: actions/upload-artifact@3cea5372237819ed00197afe530f5a7ea3e805c8 # tag=v3.1.0
+        with:
+          name: profile-exporter-dist-container
+          if-no-files-found: error
+          path: |
+            goreleaser/dist
+            !goreleaser/dist/*.txt
+
+  build-and-push-container:
+    name: Container build and push (when merged)
+    needs: build-binaries
+    runs-on: ubuntu-latest
+    container:
+      image: quay.io/containers/podman:v4.6.2@sha256:e0cef628e369cf466979d08bda2c25d861e2b90e6236e99b817235b612c511b3
+      options: >-
+        --device /dev/fuse:rw
+        --privileged
+        --security-opt label=disable
+        --security-opt seccomp=unconfined
+    permissions:
+      id-token: write
+      packages: write
+      contents: read
+    steps:
+      - name: Install dependencies
+        run: dnf install --assumeyes --repo fedora git make jq
+
+      - name: Check out code into the Go module directory
+        uses: actions/checkout@2541b1294d2704b0964813337f33b291d3f8596b # tag=v3.0.2
+
+      # https://github.com/actions/checkout/issues/766
+      - name: Add repository directory to the git global config as a safe directory
+        run: git config --global --add safe.directory "${GITHUB_WORKSPACE}"
+
+      - name: Set up Go
+        uses: actions/setup-go@84cbf8094393cdc5fe1fe1671ff2647332956b1a # tag=v3.2.1
+        with:
+          go-version-file: 'go.mod'
+          check-latest: true
+
+      - uses: actions/download-artifact@v3
+        with:
+          name: profile-exporter-dist-container
+          path: goreleaser/dist
+
+      - name: Build container
+        run: make container
+
+      - name: Check images are created
+        run: podman images | grep 'ghcr.io/polarsignals/profile-exporter'
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@11086d25041f77fe8fe7b9ea4e48e3b9192b8f19 # v3.1.2
+
+      - name: Login to registry
+        if: ${{ github.event_name != 'pull_request' }}
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | podman login -u polarsignals --password-stdin ghcr.io
+
+      - name: Install crane
+        uses: imjasonh/setup-crane@00c9e93efa4e1138c9a7a5c594acd6c75a2fbf0c # v0.3
+
+      - name: Push and sign container
+        env:
+          COSIGN_EXPERIMENTAL: true
+        run: |
+          make push-container
+          make sign-container

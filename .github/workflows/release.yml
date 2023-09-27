@@ -1,0 +1,121 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - v*
+
+permissions:
+  contents: write
+
+env:
+  # renovate: datasource=go depName=github.com/goreleaser/goreleaser
+  GORELEASER_VERSION: v1.18.2
+
+jobs:
+  binaries:
+    name: Goreleaser release
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    steps:
+      - name: Checkout
+        uses: actions/checkout@c85c95e3d7251135ab7dc9ce3241c5835cc595a9 # v3.5.3
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@fac708d6674e30b6ba41289acaab6d4b75aa0753 # v4.0.1
+        with:
+          go-version-file: 'go.mod'
+
+      - name: Run GoReleaser
+        uses: goreleaser/goreleaser-action@336e29918d653399e599bfca99fadc1d7ffbc9f7 # v4.3.0
+        with:
+          distribution: goreleaser
+          version: ${{ env.GORELEASER_VERSION }}
+          args: release --clean --timeout=60m
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Archive generated artifacts
+        uses: actions/upload-artifact@3cea5372237819ed00197afe530f5a7ea3e805c8 # tag=v3.1.0
+        with:
+          name: profile-exporter-dist-release
+          if-no-files-found: error
+          path: |
+            goreleaser/dist
+            !goreleaser/dist/*.txt
+
+  docs:
+    name: Publish Docs
+    runs-on: ubuntu-latest
+    needs: binaries
+    steps:
+      - uses: actions/checkout@93ea575cb5d8a053eaa0ac8fa3b40d7e05a33cc8 # tag=v3.1.0
+
+      - name: Publish Vercel
+        run: |
+          curl -X POST "https://api.vercel.com/v1/integrations/deploy/${{ secrets.VERCEL_WEBHOOK }}"
+
+  container:
+    name: Build and release container images
+    runs-on: ubuntu-latest
+    needs: binaries
+    container:
+      image: quay.io/containers/podman:v4.6.2@sha256:e0cef628e369cf466979d08bda2c25d861e2b90e6236e99b817235b612c511b3
+      options: >-
+        --device /dev/fuse:rw
+        --privileged
+        --security-opt label=disable
+        --security-opt seccomp=unconfined
+    permissions:
+      id-token: write
+      packages: write
+      contents: read
+    steps:
+      - name: Install dependencies
+        run: dnf install --assumeyes --repo fedora git make jq
+
+      - name: Check out code into the Go module directory
+        uses: actions/checkout@2541b1294d2704b0964813337f33b291d3f8596b # tag=v3.0.2
+
+      # https://github.com/actions/checkout/issues/766
+      - name: Add repository directory to the git global config as a safe directory
+        run: git config --global --add safe.directory "${GITHUB_WORKSPACE}"
+
+      - name: Get branch name
+        shell: bash
+        run: echo "GITHUB_BRANCH_NAME=$(echo ${GITHUB_REF#refs/heads/} | tr / -)" >> $GITHUB_ENV
+
+      - uses: actions/download-artifact@v3
+        with:
+          name: profile-exporter-dist-release
+          path: goreleaser/dist
+
+      - name: Build container
+        run: make container
+
+      - name: Check images are created
+        run: podman images | grep 'ghcr.io/polarsignals/profile-exporter'
+
+      - name: Login to registry
+        if: ${{ github.event_name != 'pull_request' }}
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | podman login -u polarsignals --password-stdin ghcr.io
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@11086d25041f77fe8fe7b9ea4e48e3b9192b8f19 # v3.1.2
+
+      - name: Install crane
+        uses: imjasonh/setup-crane@00c9e93efa4e1138c9a7a5c594acd6c75a2fbf0c # v0.3
+
+      - name: Push container
+        if: ${{ github.event_name != 'pull_request' }}
+        run: |
+          make push-container
+
+      - name: Sign container
+        env:
+          COSIGN_EXPERIMENTAL: true
+        run: |
+          make sign-container

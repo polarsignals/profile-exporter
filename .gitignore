@@ -1,0 +1,7 @@
+.idea
+/goreleaser
+/dist
+/tmp
+/out
+/bin
+TODO.md

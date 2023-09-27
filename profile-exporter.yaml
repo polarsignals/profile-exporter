@@ -1,0 +1,13 @@
+remote_write:
+  url: http://localhost:9090/api/v1/write
+
+parca:
+  address: localhost:7070
+  insecure: true
+
+queries:
+- name: WriteRawAPI
+  query: process_cpu:samples:count:cpu:nanoseconds:delta
+  duration: 20s
+  matchers:
+  - contains: github.com/parca-dev/parca/pkg/profilestore.(*ProfileColumnStore).WriteRaw

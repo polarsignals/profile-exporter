@@ -1,0 +1,61 @@
+# NOTICE: This file is written with the assumption that it will be used in parca-dev/cross-builder.
+# - There are paths in this file that are specific to parca-dev/cross-builder and Github Actions.
+# - Unfortunately, Goreleaser does not support templating environment variables per build config.
+project_name: profile-exporter
+dist: ./goreleaser/dist
+before:
+  hooks:
+    - go mod tidy
+builds:
+  - main: ./cmd/profile-exporter/
+    id: "profile-exporter"
+    binary: profile-exporter
+    # https://goreleaser.com/customization/build/#reproducible-builds
+    mod_timestamp: '{{ .CommitTimestamp }}'
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    flags:
+      - -trimpath
+      - -v
+    ldflags:
+      # https://goreleaser.com/customization/build/#reproducible-builds
+      # {{.CommitDate}} is the date of the commit to make builds reproducible.
+      - -X main.version={{.Version}} -X main.commit={{.FullCommit}} -X main.date={{.CommitDate}} -X main.goArch={{.Runtime.Goarch}}
+archives:
+  - replacements:
+      linux: Linux
+      darwin: Darwin
+      amd64: x86_64
+    format_overrides:
+      - goos: windows
+        format: zip
+checksum:
+  name_template: 'checksums.txt'
+snapshot:
+  name_template: "{{ incpatch .Tag }}-next"
+release:
+  prerelease: auto
+  # Defaults to empty.
+  footer: |
+    ## Docker images
+
+    `docker pull ghcr.io/polarsignals/profile-exporter:{{ .Tag }}`
+
+    ## Thanks!
+
+    Join our [Discord server](https://discord.com/invite/ZgUpYgpzXy);
+    Follow us on [Twitter](https://twitter.com/ParcaDev);
+    Read the [documentation](https://www.parca.dev/docs/overview).
+changelog:
+  sort: asc
+  use: github
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'

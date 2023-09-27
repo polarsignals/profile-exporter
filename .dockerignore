@@ -1,0 +1,11 @@
+.vscode
+.idea
+.git
+Dockerfile
+*.md
+/dist
+/images
+/.github
+/tmp
+target
+debug
