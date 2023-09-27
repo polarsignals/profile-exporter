@@ -78,6 +78,7 @@ jobs:
             !goreleaser/dist/*.txt
 
   build-and-push-container:
+    if: github.event_name != 'pull_request'
     name: Container build and push (when merged)
     needs: build-binaries
     runs-on: ubuntu-latest
