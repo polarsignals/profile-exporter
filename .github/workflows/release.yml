@@ -62,7 +62,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: binaries
     container:
-      image: quay.io/containers/podman:v4.6.2@sha256:0402e08323ce9f033c710a05913e9258f1d9c59af76930580adb2ec8a1f68db6
+      image: quay.io/containers/podman:v4.7.0@sha256:b64ba1c57d250e62d44088dd5ed62ff709699f858a2fc34776362082391fb7c2
       options: >-
         --device /dev/fuse:rw
         --privileged
