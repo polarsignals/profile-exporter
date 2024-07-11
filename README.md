@@ -31,9 +31,9 @@ parca:
   # gRPC endpoint without protocol
   address: <string>
   # bearer token to use for authentication, `bearerTokenFile` is recommended
-  bearerToken: <string>
+  bearer_token: <string>
   # file to read bearer token from for authentication
-  bearerTokenFile: <string>
+  bearer_token_file: <string>
   # connect to Parca-compatible API via an insecure connection
   insecure: <bool>
   # ignore verification of TLS certificate used by Parca-compatible API
